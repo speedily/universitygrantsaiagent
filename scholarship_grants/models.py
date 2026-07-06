@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from scholarship_grants.currency import currency_for_country, to_usd
+from scholarship_grants.grading import grade_from_marks
 
 
 def server_now_iso() -> str:
@@ -67,6 +68,7 @@ class Application:
             self.currency_code = currency_for_country(self.country)
         if self.family_income_usd <= 0 and self.family_income_local > 0:
             self.family_income_usd = to_usd(self.family_income_local, self.currency_code)
+        self.grade = grade_from_marks(self.marks_pct)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

@@ -1,6 +1,6 @@
-# Airtable Omni prompt — University Grants AI Agent
+# Airtable Omni prompt — full dashboard + form fields
 
-Copy the prompt below into **Airtable Omni** (or use **Import CSV** with `airtable-applications-template.csv`).
+Import **`airtable-applications-template.csv`** after creating the table.
 
 ---
 
@@ -11,55 +11,56 @@ Create a base called "University Grants AI Agent" for scholarship application tr
 
 Create one table named exactly: Student Applications
 
-Use these columns with these field types (names must match exactly — our API writes to these headers):
+Add ALL of these columns (names must match exactly — our API syncs every dashboard field):
 
-| Column name           | Field type        | Notes |
-|-----------------------|-------------------|-------|
-| Application ID        | Single line text  | Primary identifier (UUID from app) |
-| Name                  | Single line text  | Student full name |
-| Email                 | Email             | |
-| Country               | Single line text  | |
-| Semester              | Single line text  | e.g. Fall 2026 |
-| Academic Year         | Single line text  | e.g. 2026–2027 |
-| Marks Pct             | Number            | Decimal, 0–100 |
-| Grade                 | Single select     | Options: A, B, C (allow empty) |
-| Family Income Local   | Number            | Yearly income in local currency |
-| Currency              | Single line text  | ISO code: INR, USD, NGN, EUR, etc. |
-| Family Income USD     | Number            | USD equivalent for eligibility |
-| Applied At            | Single line text  | ISO datetime when form submitted |
-| Status                | Single select     | Options: pending, eligible, selected, waitlist, ineligible, interview_confirmed, no_show, interview_rejected |
-| Tier                  | Single select     | Options: A, B (allow empty) |
-| Award USD             | Number            | Scholarship amount in USD |
-| Interview Outcome     | Single select     | Options: unattended, attended_selected, attended_rejected (allow empty) |
-| Rejection Reason      | Long text         | Interviewer reason if rejected |
-| Notes                 | Long text         | System notes (FIFO, promotion, etc.) |
+| Column name            | Field type        | Notes |
+|------------------------|-------------------|-------|
+| Application ID         | Single line text  | UUID from app |
+| Name                   | Single line text  | From application form |
+| Email                  | Email             | From application form |
+| Phone                  | Single line text  | From application form |
+| Country                | Single line text  | From application form |
+| Semester               | Single line text  | e.g. Fall 2026 |
+| Academic Year          | Single line text  | e.g. 2026–2027 |
+| Marks Pct              | Number            | 0–100 |
+| Grade                  | Single select     | Options: A, B, C (allow empty) |
+| Income Local           | Number            | Yearly family income in local currency |
+| Currency               | Single line text  | INR, USD, NGN, EUR, etc. |
+| Income USD             | Number            | USD equivalent (< $12,000 eligible) |
+| Applied At             | Single line text  | Full ISO timestamp from server |
+| Applied Date           | Single line text  | e.g. 2026-07-01 (server local) |
+| Applied Time           | Single line text  | e.g. 13:30:00 (server local) |
+| Status                 | Single select     | pending, eligible, selected, waitlist, ineligible, interview_confirmed, no_show, interview_rejected |
+| Tier                   | Single select     | A, B (allow empty) |
+| Award USD              | Number            | Scholarship amount in USD |
+| Interview Outcome      | Single select     | unattended, attended_selected, attended_rejected (allow empty) |
+| Interview              | Single line text  | Human label: Unattended, Attended — selected, etc. |
+| Rejection Reason Code  | Single select     | grades_mismatch, income_mismatch, identity_mismatch, no_travel_budget, other (allow empty) |
+| Rejection Reason       | Long text         | Full rejection text from interviewer |
+| Notes                  | Long text         | System notes (FIFO, waitlist promotion) |
 
-After creating the table, import the sample CSV I provide (2 demo rows).
+Import the CSV template with 2 sample rows.
 
-Create a grid view sorted by "Applied At" ascending (FIFO order).
+Create views:
+1. "All applications" — sort by Applied At ascending (FIFO)
+2. "Screening list" — Status is selected OR waitlist OR interview_confirmed
+3. "Final confirmed" — Status is interview_confirmed
 
-Add a filtered view "Screening list" showing Status is any of: selected, interview_confirmed, waitlist.
-
-Add a filtered view "Final confirmed" showing Status is interview_confirmed.
+Do NOT omit any column — the app writes all of them on every sync.
 ```
 
 ---
 
-## After Omni creates the base
+## If you already have a base
 
-1. Open the base → **Help → API documentation** (or base URL) and copy **Base ID** (`appXXXXXXXXXXXXXX`).
-2. Create a Personal Access Token at https://airtable.com/create/tokens with scopes:
-   - `data.records:read`
-   - `data.records:write`
-   - Access to this base only
-3. Put secrets in **`.env`** (local), **not** `.env.example`:
+Add any **missing columns** from the table above (Omni: "Add these columns to Student Applications: …").
+
+Then re-sync from the app: **Load demo students** → **Run fair allocation**.
+
+Or run locally:
 
 ```bash
-cp .env.example .env
-# Edit .env — paste your real keys there
+cd vibecert
+python scripts/seed_demo.py
+python -c "from dotenv import load_dotenv; load_dotenv('.env'); from scholarship_grants.seed_data import SEED; from scholarship_grants.storage import replace_all; replace_all(SEED); print('Synced', len(SEED), 'rows to Airtable')"
 ```
-
-4. For **Vercel**: Project → Settings → Environment Variables → add the same three vars.
-5. Redeploy: `vercel --prod`
-
-Table name must be exactly: `Student Applications` (or set `AIRTABLE_APPLICATIONS_TABLE` in env).

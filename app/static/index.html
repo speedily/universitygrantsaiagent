@@ -34,6 +34,8 @@
     @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
     button.primary { background: var(--accent); color: #fff; border: none; padding: .7rem 1.4rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
     button.primary:hover { background: #1e40af; }
+    button.danger { background: #b91c1c; color: #fff; border: none; padding: .7rem 1.4rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    button.danger:hover { background: #991b1b; }
     .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin: 1rem 0; }
     .metric { background: #f1f5f9; padding: .75rem; border-radius: 8px; text-align: center; }
     .metric strong { display: block; font-size: 1.4rem; }
@@ -58,6 +60,11 @@
     #msg { margin-top: .75rem; font-size: .9rem; }
     .progress { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: .5rem 0 1rem; }
     .progress-bar { height: 100%; background: var(--green); transition: width .3s; }
+    .dash-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+    .loading-indicator { display: inline-flex; align-items: center; gap: .5rem; font-size: .875rem; color: var(--muted); font-weight: 600; }
+    .spinner { width: 18px; height: 18px; border: 3px solid #cbd5e1; border-top-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite; flex-shrink: 0; }
+    button.primary:disabled, button.danger:disabled { opacity: .65; cursor: not-allowed; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -93,9 +100,8 @@
             <label>Semester</label>
             <select name="semester" id="semester-select"></select>
             <label>Marks (%) *</label>
-            <input name="marks_pct" type="number" min="0" max="100" value="72" required />
-            <label>Letter grade (optional)</label>
-            <select name="grade"><option value="">—</option><option>A</option><option>B</option><option>C</option></select>
+            <input name="marks_pct" id="marks_pct" type="number" min="40" max="100" value="72" required />
+            <p id="grade-preview" style="margin:-0.35rem 0 .75rem;font-size:.85rem;color:#475569">Letter grade: <strong>B</strong> (auto from marks)</p>
             <label>Currency</label>
             <select name="currency_code" id="currency-select"></select>
             <label>Family yearly income (local currency) *</label>
@@ -109,10 +115,17 @@
 
     <div id="dash" class="panel">
       <p id="budget-line"></p>
-      <p class="note" style="margin-bottom:1rem">Rows sorted by <strong>form submission date &amp; time</strong> (FIFO). Applied times use <strong id="tz-label">server local time</strong>. After allocation, record <strong>online interview</strong> outcomes — unattended or rejected slots promote the next waitlisted student.</p>
-      <button class="primary" id="run-allocate">Run fair allocation</button>
-      <button class="primary" id="run-seed" style="margin-left:.5rem;background:#475569">Load demo students</button>
-      <a class="primary" id="export-csv" href="/api/export/csv?list=screening" style="margin-left:.5rem;display:inline-block;text-decoration:none;background:#0f766e;padding:.7rem 1.4rem;border-radius:8px;color:#fff;font-weight:600">Download screening CSV</a>
+      <p class="note" style="margin-bottom:1rem">Rows sorted by <strong>form submission date &amp; time</strong> (FIFO). Applied times use <strong id="tz-label">server local time</strong>. Demo flow: <strong>Load demo data</strong> → <strong>Run fair allocation</strong> (auto-syncs to Airtable) → record <strong>online interview</strong> outcomes → <strong>Save to Airtable &amp; download CSV</strong> for final export.</p>
+      <div class="dash-actions">
+        <button class="danger" id="run-clear">Clear all data</button>
+        <button class="primary" id="run-seed" style="background:#475569">Load demo data</button>
+        <button class="primary" id="run-allocate">Run fair allocation</button>
+        <span id="allocate-loading" class="loading-indicator" hidden aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          Running allocation &amp; syncing to Airtable…
+        </span>
+        <button class="primary" id="sync-export" style="background:#0f766e">Save to Airtable &amp; download CSV</button>
+      </div>
       <div class="metrics" id="metrics" style="display:none">
         <div class="metric"><strong id="m-selected">0</strong><span>Selected</span></div>
         <div class="metric"><strong id="m-wait">0</strong><span>Waitlist</span></div>
@@ -123,7 +136,7 @@
       <p id="explain"></p>
       <div class="table-wrap">
       <table>
-        <thead><tr><th></th><th>Name</th><th>Country</th><th>Applied date</th><th>Applied time</th><th>Marks</th><th>Income (local)</th><th>Income (USD)</th><th>Tier</th><th>Award</th><th>Status</th><th>Interview</th><th>Rejection reason</th></tr></thead>
+        <thead><tr><th></th><th>Name</th><th>Phone</th><th>Country</th><th>Applied date</th><th>Applied time</th><th>Marks</th><th>Grade</th><th>Income (local)</th><th>Income (USD)</th><th>Tier</th><th>Award</th><th>Status</th><th>Interview</th><th>Rejection reason</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
       </div>
@@ -144,8 +157,38 @@
     let metaCache = null;
     const INTERVIEW_ELIGIBLE = new Set(['selected', 'interview_confirmed', 'no_show', 'interview_rejected']);
 
+    function gradeFromMarks(marks) {
+      const m = Number(marks);
+      if (Number.isNaN(m)) return '—';
+      if (m >= 70) return 'A';
+      if (m >= 50) return 'B';
+      if (m >= 40) return 'C';
+      return 'Fail';
+    }
+
+    function updateGradePreview() {
+      const marks = document.getElementById('marks_pct').value;
+      const grade = gradeFromMarks(marks);
+      const el = document.getElementById('grade-preview');
+      if (grade === 'Fail') {
+        el.innerHTML = 'Letter grade: <strong style="color:#b91c1c">Fail</strong> — not accepted (minimum 40%)';
+      } else {
+        el.innerHTML = `Letter grade: <strong>${grade}</strong> (auto from marks)`;
+      }
+    }
+
+    document.getElementById('marks_pct').addEventListener('input', updateGradePreview);
+
+    function escapeHtml(text) {
+      return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+    }
+
     function statusClass(status) {
       const map = {
+        pending: 'status-ineligible',
         selected: 'status-selected', waitlist: 'status-waitlist', ineligible: 'status-ineligible',
         no_show: 'status-noshow', interview_rejected: 'status-rejected', interview_confirmed: 'status-confirmed'
       };
@@ -154,6 +197,7 @@
 
     function statusLabel(status) {
       const map = {
+        pending: 'pending',
         selected: 'selected', waitlist: 'waitlist', ineligible: 'ineligible',
         no_show: 'no show', interview_rejected: 'rejected', interview_confirmed: 'confirmed'
       };
@@ -161,6 +205,7 @@
     }
 
     function dotClass(status) {
+      if (status === 'pending') return 'waitlist';
       if (status === 'selected' || status === 'interview_confirmed') return 'selected';
       if (status === 'waitlist') return 'waitlist';
       if (status === 'no_show') return 'waitlist';
@@ -179,37 +224,45 @@
         `<option value="${k}" ${a.rejection_reason_code === k ? 'selected' : ''}>${v}</option>`).join('');
       const showReason = a.interview_outcome === 'attended_rejected';
       const showOther = a.rejection_reason_code === 'other';
-      return `<div class="interview-cell" data-id="${a.id}">
+      const otherValue = a.rejection_reason_code === 'other' ? (a.rejection_reason || '') : '';
+      return `<div class="interview-cell" data-id="${escapeHtml(a.id)}">
         <select class="outcome-select">${opts}</select>
         <div class="reason-block" style="display:${showReason ? 'block' : 'none'}">
           <select class="reason-select">${reasonOpts}</select>
           <input class="reason-other" type="text" placeholder="Specify other reason…"
-            value="${(a.rejection_reason_code === 'other' ? (a.rejection_reason || '') : '').replace(/"/g, '&quot;')}"
+            value="${escapeHtml(otherValue)}"
             style="display:${showOther ? 'block' : 'none'}" />
         </div>
         <button type="button" class="save-btn">Save</button>
       </div>`;
     }
 
-    function bindInterviewHandlers() {
-      document.getElementById('tbody').querySelectorAll('.interview-cell').forEach(cell => {
-        const outcome = cell.querySelector('.outcome-select');
+    document.getElementById('tbody').addEventListener('change', e => {
+      const cell = e.target.closest('.interview-cell');
+      if (!cell) return;
+      if (e.target.classList.contains('outcome-select')) {
         const reasonBlock = cell.querySelector('.reason-block');
-        const reason = cell.querySelector('.reason-select');
+        reasonBlock.style.display = e.target.value === 'attended_rejected' ? 'block' : 'none';
+        if (e.target.value !== 'attended_rejected') saveInterview(cell);
+      }
+      if (e.target.classList.contains('reason-select')) {
         const other = cell.querySelector('.reason-other');
-        outcome.addEventListener('change', () => {
-          reasonBlock.style.display = outcome.value === 'attended_rejected' ? 'block' : 'none';
-          if (outcome.value !== 'attended_rejected') saveInterview(cell);
-        });
-        reason.addEventListener('change', () => {
-          other.style.display = reason.value === 'other' ? 'block' : 'none';
-        });
-        cell.querySelector('.save-btn').addEventListener('click', () => saveInterview(cell));
-      });
-    }
+        other.style.display = e.target.value === 'other' ? 'block' : 'none';
+        if (e.target.value !== 'other' && cell.querySelector('.outcome-select').value === 'attended_rejected') {
+          saveInterview(cell);
+        }
+      }
+    });
+
+    document.getElementById('tbody').addEventListener('click', e => {
+      const btn = e.target.closest('.save-btn');
+      if (btn) saveInterview(btn.closest('.interview-cell'));
+    });
 
     async function saveInterview(cell) {
+      if (!cell || cell.dataset.saving === '1') return;
       const id = cell.dataset.id;
+      if (!id) { alert('Missing application ID — refresh the dashboard and try again.'); return; }
       const outcome = cell.querySelector('.outcome-select').value;
       const reasonCode = cell.querySelector('.reason-select')?.value || '';
       const other = cell.querySelector('.reason-other')?.value || '';
@@ -221,21 +274,28 @@
         alert('Please specify the rejection reason.');
         return;
       }
-      const r = await fetch(API + `/api/applications/${id}/interview`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          interview_outcome: outcome,
-          rejection_reason_code: reasonCode,
-          rejection_other: other
-        })
-      });
-      const j = await r.json();
-      if (!r.ok) { alert(j.detail || 'Error'); return; }
-      if (j.promoted) {
-        alert(`Saved. ${j.promoted.name} promoted from waitlist (FIFO).`);
+      cell.dataset.saving = '1';
+      try {
+        const r = await fetch(API + `/api/applications/${encodeURIComponent(id)}/interview`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            interview_outcome: outcome,
+            rejection_reason_code: reasonCode,
+            rejection_other: other.trim()
+          })
+        });
+        const j = await r.json();
+        if (!r.ok) { alert(j.detail || 'Error'); return; }
+        if (j.promoted) {
+          alert(`Saved. ${j.promoted.name} promoted from waitlist (FIFO).`);
+        } else if (j.airtable_enabled && !j.airtable_synced) {
+          alert('Saved to dashboard. Airtable sync failed — use Save to Airtable & download CSV to retry.');
+        }
+        renderTable(j.applications || []);
+      } finally {
+        delete cell.dataset.saving;
       }
-      renderTable(j.applications || []);
     }
 
     async function loadMeta() {
@@ -247,7 +307,7 @@
       document.getElementById('semester-select').innerHTML =
         `<option>${m.semester}</option><option>Spring 2027</option>`;
       document.getElementById('budget-line').textContent =
-        `Budget cap: $${m.budget_usd.toLocaleString()} USD · Eligibility: income < $${m.max_income_usd.toLocaleString()} USD/year (local currency converted) · marks ≥ 50%`;
+        `Budget cap: $${m.budget_usd.toLocaleString()} USD · Eligibility: income < $${m.max_income_usd.toLocaleString()} USD/year · marks ≥ 50% · ${m.grade_scale || ''}`;
       if (m.server_timezone) {
         document.getElementById('tz-label').textContent = `server local time (${m.server_timezone})`;
       }
@@ -278,9 +338,14 @@
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
       });
       const j = await r.json();
-      document.getElementById('msg').textContent = r.ok
-        ? `✓ Application submitted for ${body.name} on ${j.application?.applied_date} at ${j.application?.applied_time} (server time)`
-        : (j.detail || 'Error');
+      if (r.ok) {
+        document.getElementById('msg').textContent =
+          `✓ Application submitted for ${body.name} on ${j.application?.applied_date} at ${j.application?.applied_time} (server time)`;
+        switchToTab('dash');
+        await loadApps();
+      } else {
+        document.getElementById('msg').textContent = j.detail || 'Error';
+      }
     });
 
     function renderTable(apps) {
@@ -294,9 +359,9 @@
         const reasonDisplay = a.rejection_reason || (a.interview_outcome === 'attended_rejected' ? '—' : '');
         return `<tr>
           <td><span class="dot ${dot}"></span></td>
-          <td>${a.name}</td><td>${a.country}</td>
+          <td>${a.name}</td><td>${a.phone || '—'}</td><td>${a.country}</td>
           <td>${appliedDate}</td><td>${appliedTime}</td>
-          <td>${a.marks_pct}%</td>
+          <td>${a.marks_pct}%</td><td>${a.grade || gradeFromMarks(a.marks_pct)}</td>
           <td>${Number(a.family_income_local).toLocaleString()} ${a.currency_code || ''}</td>
           <td>$${Number(a.family_income_usd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
           <td>${a.tier || '—'}</td>
@@ -305,41 +370,126 @@
           <td>${buildInterviewCell(a)}</td>
           <td>${reasonDisplay || '—'}</td></tr>`;
       }).join('');
-      bindInterviewHandlers();
     }
 
     async function loadApps() {
       const r = await fetch(API + '/api/applications');
       const j = await r.json();
-      renderTable(j.applications || []);
+      const apps = j.applications || [];
+      if (apps.length === 0) {
+        resetDashboardUi();
+      } else {
+        renderTable(apps);
+      }
+    }
+
+    function switchToTab(tabId) {
+      document.querySelectorAll('.tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === tabId);
+      });
+      document.querySelectorAll('.panel').forEach(p => {
+        p.classList.toggle('active', p.id === tabId);
+      });
+    }
+
+    function setAllocateLoading(loading) {
+      const btn = document.getElementById('run-allocate');
+      const indicator = document.getElementById('allocate-loading');
+      btn.disabled = loading;
+      indicator.hidden = !loading;
     }
 
     document.getElementById('run-allocate').addEventListener('click', async () => {
-      const r = await fetch(API + '/api/allocate', { method: 'POST' });
+      setAllocateLoading(true);
+      try {
+        const r = await fetch(API + '/api/allocate', { method: 'POST' });
+        const j = await r.json();
+        if (!r.ok) { alert(j.detail || 'Error'); return; }
+        const s = j.summary;
+        document.getElementById('metrics').style.display = 'grid';
+        document.getElementById('prog-wrap').style.display = 'block';
+        document.getElementById('m-selected').textContent = s.selected_count;
+        document.getElementById('m-wait').textContent = s.waitlist_count;
+        document.getElementById('m-spent').textContent = '$' + s.spent_usd.toLocaleString();
+        document.getElementById('m-left').textContent = '$' + s.remaining_usd.toLocaleString();
+        document.getElementById('prog-bar').style.width = (100 * s.spent_usd / s.budget_usd) + '%';
+        document.getElementById('explain').textContent = j.explanation || (
+          'Allocation used deterministic rules + FIFO timestamps — no human bias in filter phase.');
+        if (j.airtable_enabled && !j.airtable_synced) {
+          alert('Allocation complete but Airtable sync failed. Interview saves may error until sync succeeds.');
+        }
+        renderTable(j.applications);
+      } catch (err) {
+        alert('Allocation failed — please try again.');
+      } finally {
+        setAllocateLoading(false);
+      }
+    });
+
+    function resetDashboardUi() {
+      document.getElementById('metrics').style.display = 'none';
+      document.getElementById('prog-wrap').style.display = 'none';
+      document.getElementById('explain').textContent = '';
+      document.getElementById('tbody').innerHTML =
+        '<tr><td colspan="15" style="text-align:center;color:#64748b;padding:1.5rem">No applications yet — submit the form or click <strong>Load demo data</strong>.</td></tr>';
+    }
+
+    document.getElementById('run-clear').addEventListener('click', async () => {
+      if (!confirm('Clear all students from the dashboard and Airtable?')) return;
+      const r = await fetch(API + '/api/clear', { method: 'POST' });
       const j = await r.json();
       if (!r.ok) { alert(j.detail || 'Error'); return; }
-      const s = j.summary;
-      document.getElementById('metrics').style.display = 'grid';
-      document.getElementById('prog-wrap').style.display = 'block';
-      document.getElementById('m-selected').textContent = s.selected_count;
-      document.getElementById('m-wait').textContent = s.waitlist_count;
-      document.getElementById('m-spent').textContent = '$' + s.spent_usd.toLocaleString();
-      document.getElementById('m-left').textContent = '$' + s.remaining_usd.toLocaleString();
-      document.getElementById('prog-bar').style.width = (100 * s.spent_usd / s.budget_usd) + '%';
-      document.getElementById('explain').textContent = j.explanation || (
-        'Allocation used deterministic rules + FIFO timestamps — no human bias in filter phase.');
-      renderTable(j.applications);
+      resetDashboardUi();
+      let msg = j.message || 'All application data cleared';
+      if (j.airtable_enabled) {
+        if (j.airtable_cleared) {
+          msg += `\n\n✓ Airtable cleared (${j.airtable_deleted || 0} rows removed).`;
+        } else {
+          msg += `\n\n⚠ Airtable was NOT cleared: ${j.last_airtable_error || 'unknown error'}`;
+        }
+      }
+      alert(msg);
     });
 
     document.getElementById('run-seed').addEventListener('click', async () => {
       const r = await fetch(API + '/api/seed', { method: 'POST' });
       const j = await r.json();
       if (!r.ok) { alert(j.detail || 'Error'); return; }
-      alert(`Loaded ${j.count} demo students. Click "Run fair allocation".`);
-      loadApps();
+      document.getElementById('metrics').style.display = 'none';
+      document.getElementById('prog-wrap').style.display = 'none';
+      document.getElementById('explain').textContent = '';
+      renderTable(j.applications || []);
+      alert(j.message || `Added ${j.count} demo students (${j.total} total).`);
     });
 
-    loadMeta().then(() => loadApps());
+    document.getElementById('sync-export').addEventListener('click', async () => {
+      const syncRes = await fetch(API + '/api/sync', { method: 'POST' });
+      const syncJson = await syncRes.json();
+      if (!syncRes.ok) {
+        alert(syncJson.detail || syncJson.message || 'Airtable sync failed');
+        return;
+      }
+      const csvRes = await fetch(API + '/api/export/csv?list=screening');
+      if (!csvRes.ok) {
+        alert('Synced to Airtable but CSV download failed.');
+        return;
+      }
+      const blob = await csvRes.blob();
+      const disposition = csvRes.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match ? match[1] : 'scholarship_screening.csv';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      alert(syncJson.message + '\n\nCSV downloaded.');
+    });
+
+    loadMeta().then(() => { updateGradePreview(); resetDashboardUi(); });
   </script>
 </body>
 </html>

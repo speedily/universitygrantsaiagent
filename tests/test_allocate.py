@@ -24,7 +24,8 @@ def test_eligible_high_income_rejected():
 
 
 def test_eligible_low_marks_rejected():
-    assert not is_eligible(_app(marks_pct=40, grade="C"))
+    assert not is_eligible(_app(marks_pct=45))
+    assert not is_eligible(_app(marks_pct=39))
 
 
 def test_income_usd_conversion_eligible():

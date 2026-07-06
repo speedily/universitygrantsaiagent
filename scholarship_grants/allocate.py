@@ -12,36 +12,21 @@ from scholarship_grants.config import (
     TIER_A_AWARD_USD,
     TIER_B_AWARD_USD,
 )
+from scholarship_grants.grading import grade_from_marks
 from scholarship_grants.models import Application
 
 
-def normalize_grade(grade: str) -> str:
-    return (grade or "").strip().upper()
-
-
-def effective_marks_pct(app: Application) -> float:
-    grade = normalize_grade(app.grade)
-    if grade == "A":
-        return max(app.marks_pct, 85.0)
-    if grade == "B":
-        return max(app.marks_pct, 60.0)
-    if grade == "C":
-        return max(app.marks_pct, 45.0)
-    return float(app.marks_pct)
-
-
 def is_eligible(app: Application) -> bool:
-    marks = effective_marks_pct(app)
-    grade = normalize_grade(app.grade)
-    marks_ok = marks >= MIN_MARKS_ELIGIBLE or grade in {"A", "B"}
+    marks = float(app.marks_pct)
+    grade = grade_from_marks(marks)
+    marks_ok = marks >= MIN_MARKS_ELIGIBLE and grade != "FAIL"
     income_ok = app.family_income_usd < MAX_INCOME_USD
     return marks_ok and income_ok
 
 
 def assign_tier(app: Application) -> tuple[str, float]:
-    marks = effective_marks_pct(app)
-    grade = normalize_grade(app.grade)
-    if marks >= MIN_MARKS_TIER_A or grade == "A":
+    marks = float(app.marks_pct)
+    if marks >= MIN_MARKS_TIER_A:
         return "A", TIER_A_AWARD_USD
     return "B", TIER_B_AWARD_USD
 
@@ -53,11 +38,16 @@ def allocate_applications(
     """Return updated applications and summary stats."""
     apps = [deepcopy(a) for a in applications]
     for app in apps:
+        app.grade = grade_from_marks(app.marks_pct)
         if not is_eligible(app):
             app.status = "ineligible"
             app.tier = ""
             app.award_usd = 0.0
-            app.notes = "Does not meet income (< $12,000 USD equivalent) or marks eligibility"
+            grade = app.grade
+            if grade == "FAIL" or app.marks_pct < MIN_MARKS_ELIGIBLE:
+                app.notes = "Does not meet admission (marks ≥40%) or scholarship marks (≥50%)"
+            else:
+                app.notes = "Does not meet income (< $12,000 USD equivalent) or marks eligibility"
             continue
         tier, award = assign_tier(app)
         app.tier = tier

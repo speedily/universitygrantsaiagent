@@ -24,6 +24,7 @@ from scholarship_grants.interview import (
     REJECTION_REASONS,
     apply_interview_outcome,
 )
+from scholarship_grants.grading import grade_from_marks, grade_scale_note, is_admitted
 from scholarship_grants.models import Application, format_applied_at, server_timezone_label
 from scholarship_grants.storage import add_application, load_applications, replace_all
 
@@ -42,7 +43,8 @@ with tab_apply:
     st.warning(f"Application deadline: **{APPLICATION_DEADLINE}** · {ACADEMIC_YEAR} · **{CURRENT_SEMESTER}**")
     st.info(
         "Proof of marks/grades and yearly tax filed documents will be requested **by email** "
-        "once you are shortlisted for an **online interview** — not required on this form."
+        "once you are shortlisted for an **online interview** — not required on this form.\n\n"
+        f"_{grade_scale_note()}_"
     )
     countries = sorted(COUNTRY_CURRENCY.keys())
     with st.form("apply_form"):
@@ -55,7 +57,7 @@ with tab_apply:
         with c2:
             semester = st.selectbox("Semester", [CURRENT_SEMESTER, "Spring 2027", "Fall 2025"])
             marks_pct = st.number_input("Marks (%) *", min_value=0.0, max_value=100.0, value=72.0)
-            grade = st.selectbox("Letter grade (optional)", ["", "A", "B", "C"])
+            st.caption(f"Letter grade: **{grade_from_marks(marks_pct)}** (auto from marks)")
             default_currency = currency_for_country(country)
             currency = st.selectbox("Income currency", sorted(TO_USD.keys()), index=sorted(TO_USD.keys()).index(default_currency))
             income = st.number_input(f"Family yearly income ({currency}) *", min_value=0.0, value=850000.0 if currency == "INR" else 10000.0, step=1000.0)
@@ -63,6 +65,8 @@ with tab_apply:
         if submitted:
             if not name or not email or not country:
                 st.error("Name, email, and country are required.")
+            elif not is_admitted(marks_pct):
+                st.error("Marks below 40% — Fail grade. Not accepted for admission.")
             else:
                 app = Application(
                     name=name,
@@ -74,7 +78,6 @@ with tab_apply:
                     marks_pct=marks_pct,
                     family_income_local=income,
                     currency_code=currency,
-                    grade=grade,
                 )
                 add_application(app)
                 applied_date, applied_time = format_applied_at(app.applied_at)

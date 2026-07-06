@@ -71,6 +71,16 @@ def test_attended_rejected_with_reason():
     assert promoted.name == "Bob"
 
 
+def test_attended_rejected_other_reason():
+    apps = [_selected("Alice", "2026-07-01T08:00:00+00:00")]
+    updated, target, _ = apply_interview_outcome(
+        apps, apps[0].id, "attended_rejected", "other", "Could not verify documents"
+    )
+    assert target.status == "interview_rejected"
+    assert target.rejection_reason_code == "other"
+    assert target.rejection_reason == "Could not verify documents"
+
+
 def test_attended_selected_confirms():
     apps = [_selected("Alice", "2026-07-01T08:00:00+00:00")]
     updated, target, promoted = apply_interview_outcome(apps, apps[0].id, "attended_selected")

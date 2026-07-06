@@ -11,7 +11,10 @@ from scholarship_grants.models import Application
 CSV_COLUMNS = [
     "name",
     "email",
+    "phone",
     "country",
+    "semester",
+    "academic_year",
     "applied_date",
     "applied_time",
     "marks_pct",
@@ -23,6 +26,7 @@ CSV_COLUMNS = [
     "award_usd",
     "status",
     "interview_outcome",
+    "rejection_reason_code",
     "rejection_reason",
     "notes",
 ]
