@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "VERCEL": "1"
+  },
+  "functions": {
+    "app/vercel_app.py": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "excludeFiles": "{.venv/**,data/**,scripts/**,tests/**,**/__pycache__/**,streamlit_app.py}"
+    }
+  },
+  "routes": [
+    { "src": "/api/(.*)", "dest": "app/vercel_app.py" },
+    { "src": "/(.*)", "dest": "app/vercel_app.py" }
+  ]
+}

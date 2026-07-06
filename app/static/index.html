@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>University Grants AI Agent</title>
+  <style>
+    :root {
+      --green: #059669;
+      --orange: #ea580c;
+      --bg: #f8fafc;
+      --card: #fff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    header { background: linear-gradient(135deg, #1e3a8a, #1d4ed8); color: #fff; padding: 1.5rem 2rem; }
+    header h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+    header p { margin: 0; opacity: .9; font-size: .95rem; }
+    .wrap { max-width: 100%; margin: 0 auto; padding: 1.5rem; }
+    .table-wrap { overflow-x: auto; margin-top: 1rem; }
+    .tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .tab { padding: .6rem 1.2rem; border: none; background: #e2e8f0; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .tab.active { background: var(--accent); color: #fff; }
+    .panel { display: none; background: var(--card); border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .panel.active { display: block; }
+    .banner { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .75rem 1rem; margin-bottom: 1rem; border-radius: 6px; font-size: .9rem; }
+    .note { background: #eff6ff; border-left: 4px solid var(--accent); padding: .75rem 1rem; margin-bottom: 1rem; border-radius: 6px; font-size: .9rem; }
+    label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: .25rem; }
+    input, select { width: 100%; padding: .5rem; margin-bottom: .75rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    button.primary { background: var(--accent); color: #fff; border: none; padding: .7rem 1.4rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    button.primary:hover { background: #1e40af; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin: 1rem 0; }
+    .metric { background: #f1f5f9; padding: .75rem; border-radius: 8px; text-align: center; }
+    .metric strong { display: block; font-size: 1.4rem; }
+    .metric span { font-size: .75rem; color: var(--muted); text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th, td { padding: .5rem .6rem; text-align: left; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    th { background: #f8fafc; font-size: .75rem; text-transform: uppercase; color: var(--muted); }
+    .status-selected { color: var(--green); font-weight: 700; }
+    .status-waitlist { color: var(--orange); font-weight: 700; }
+    .status-ineligible { color: var(--muted); }
+    .status-noshow { color: #b45309; font-weight: 700; }
+    .status-rejected { color: #dc2626; font-weight: 700; }
+    .status-confirmed { color: var(--green); font-weight: 700; }
+    .interview-cell select, .interview-cell input { width: auto; min-width: 140px; margin: 0 0 .35rem; font-size: .8rem; padding: .35rem; }
+    .interview-cell .reason-other { min-width: 160px; }
+    .interview-cell .save-btn { font-size: .75rem; padding: .3rem .6rem; background: #334155; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    .interview-na { color: var(--muted); font-size: .8rem; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .dot.selected { background: var(--green); }
+    .dot.waitlist { background: var(--orange); }
+    .dot.ineligible { background: #94a3b8; }
+    #msg { margin-top: .75rem; font-size: .9rem; }
+    .progress { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: .5rem 0 1rem; }
+    .progress-bar { height: 100%; background: var(--green); transition: width .3s; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>University Grants AI Agent</h1>
+    <p>Bias-free grant allocation · Free for universities worldwide</p>
+  </header>
+  <div class="wrap">
+    <div class="tabs">
+      <button class="tab active" data-tab="apply">Scholarship Application</button>
+      <button class="tab" data-tab="dash">Grants Agent Dashboard</button>
+    </div>
+
+    <div id="apply" class="panel active">
+      <div class="banner" id="deadline-banner">Loading deadline…</div>
+      <div class="note">
+        Proof of marks/grades and yearly tax filed documents will be requested <strong>by email</strong>
+        once you are shortlisted for an <strong>online interview</strong> — not required on this form.
+      </div>
+      <form id="apply-form">
+        <div class="grid">
+          <div>
+            <label>Full name *</label>
+            <input name="name" required />
+            <label>Email *</label>
+            <input name="email" type="email" required />
+            <label>Phone</label>
+            <input name="phone" />
+            <label>Country *</label>
+            <select name="country" id="country-select" required></select>
+          </div>
+          <div>
+            <label>Semester</label>
+            <select name="semester" id="semester-select"></select>
+            <label>Marks (%) *</label>
+            <input name="marks_pct" type="number" min="0" max="100" value="72" required />
+            <label>Letter grade (optional)</label>
+            <select name="grade"><option value="">—</option><option>A</option><option>B</option><option>C</option></select>
+            <label>Currency</label>
+            <select name="currency_code" id="currency-select"></select>
+            <label>Family yearly income (local currency) *</label>
+            <input name="family_income_local" type="number" min="0" value="850000" required />
+          </div>
+        </div>
+        <button type="submit" class="primary">Submit application</button>
+        <div id="msg"></div>
+      </form>
+    </div>
+
+    <div id="dash" class="panel">
+      <p id="budget-line"></p>
+      <p class="note" style="margin-bottom:1rem">Rows sorted by <strong>form submission date &amp; time</strong> (FIFO). Applied times use <strong id="tz-label">server local time</strong>. After allocation, record <strong>online interview</strong> outcomes — unattended or rejected slots promote the next waitlisted student.</p>
+      <button class="primary" id="run-allocate">Run fair allocation</button>
+      <button class="primary" id="run-seed" style="margin-left:.5rem;background:#475569">Load demo students</button>
+      <a class="primary" id="export-csv" href="/api/export/csv?list=screening" style="margin-left:.5rem;display:inline-block;text-decoration:none;background:#0f766e;padding:.7rem 1.4rem;border-radius:8px;color:#fff;font-weight:600">Download screening CSV</a>
+      <div class="metrics" id="metrics" style="display:none">
+        <div class="metric"><strong id="m-selected">0</strong><span>Selected</span></div>
+        <div class="metric"><strong id="m-wait">0</strong><span>Waitlist</span></div>
+        <div class="metric"><strong id="m-spent">$0</strong><span>Spent</span></div>
+        <div class="metric"><strong id="m-left">$0</strong><span>Remaining</span></div>
+      </div>
+      <div class="progress" id="prog-wrap" style="display:none"><div class="progress-bar" id="prog-bar"></div></div>
+      <p id="explain"></p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Name</th><th>Country</th><th>Applied date</th><th>Applied time</th><th>Marks</th><th>Income (local)</th><th>Income (USD)</th><th>Tier</th><th>Award</th><th>Status</th><th>Interview</th><th>Rejection reason</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  <script>
+    const API = '';
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'dash') loadApps();
+      });
+    });
+
+    let metaCache = null;
+    const INTERVIEW_ELIGIBLE = new Set(['selected', 'interview_confirmed', 'no_show', 'interview_rejected']);
+
+    function statusClass(status) {
+      const map = {
+        selected: 'status-selected', waitlist: 'status-waitlist', ineligible: 'status-ineligible',
+        no_show: 'status-noshow', interview_rejected: 'status-rejected', interview_confirmed: 'status-confirmed'
+      };
+      return map[status] || '';
+    }
+
+    function statusLabel(status) {
+      const map = {
+        selected: 'selected', waitlist: 'waitlist', ineligible: 'ineligible',
+        no_show: 'no show', interview_rejected: 'rejected', interview_confirmed: 'confirmed'
+      };
+      return map[status] || status;
+    }
+
+    function dotClass(status) {
+      if (status === 'selected' || status === 'interview_confirmed') return 'selected';
+      if (status === 'waitlist') return 'waitlist';
+      if (status === 'no_show') return 'waitlist';
+      return 'ineligible';
+    }
+
+    function buildInterviewCell(a) {
+      if (!['selected', 'interview_confirmed', 'no_show', 'interview_rejected'].includes(a.status)) {
+        return '<span class="interview-na">Not scheduled</span>';
+      }
+      const outcomes = metaCache?.interview_outcomes || {};
+      const reasons = metaCache?.rejection_reasons || {};
+      let opts = Object.entries(outcomes).map(([k, v]) =>
+        `<option value="${k}" ${a.interview_outcome === k ? 'selected' : ''}>${v}</option>`).join('');
+      let reasonOpts = Object.entries(reasons).map(([k, v]) =>
+        `<option value="${k}" ${a.rejection_reason_code === k ? 'selected' : ''}>${v}</option>`).join('');
+      const showReason = a.interview_outcome === 'attended_rejected';
+      const showOther = a.rejection_reason_code === 'other';
+      return `<div class="interview-cell" data-id="${a.id}">
+        <select class="outcome-select">${opts}</select>
+        <div class="reason-block" style="display:${showReason ? 'block' : 'none'}">
+          <select class="reason-select">${reasonOpts}</select>
+          <input class="reason-other" type="text" placeholder="Specify other reason…"
+            value="${(a.rejection_reason_code === 'other' ? (a.rejection_reason || '') : '').replace(/"/g, '&quot;')}"
+            style="display:${showOther ? 'block' : 'none'}" />
+        </div>
+        <button type="button" class="save-btn">Save</button>
+      </div>`;
+    }
+
+    function bindInterviewHandlers() {
+      document.getElementById('tbody').querySelectorAll('.interview-cell').forEach(cell => {
+        const outcome = cell.querySelector('.outcome-select');
+        const reasonBlock = cell.querySelector('.reason-block');
+        const reason = cell.querySelector('.reason-select');
+        const other = cell.querySelector('.reason-other');
+        outcome.addEventListener('change', () => {
+          reasonBlock.style.display = outcome.value === 'attended_rejected' ? 'block' : 'none';
+          if (outcome.value !== 'attended_rejected') saveInterview(cell);
+        });
+        reason.addEventListener('change', () => {
+          other.style.display = reason.value === 'other' ? 'block' : 'none';
+        });
+        cell.querySelector('.save-btn').addEventListener('click', () => saveInterview(cell));
+      });
+    }
+
+    async function saveInterview(cell) {
+      const id = cell.dataset.id;
+      const outcome = cell.querySelector('.outcome-select').value;
+      const reasonCode = cell.querySelector('.reason-select')?.value || '';
+      const other = cell.querySelector('.reason-other')?.value || '';
+      if (outcome === 'attended_rejected' && !reasonCode) {
+        alert('Please select a rejection reason.');
+        return;
+      }
+      if (outcome === 'attended_rejected' && reasonCode === 'other' && !other.trim()) {
+        alert('Please specify the rejection reason.');
+        return;
+      }
+      const r = await fetch(API + `/api/applications/${id}/interview`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          interview_outcome: outcome,
+          rejection_reason_code: reasonCode,
+          rejection_other: other
+        })
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.detail || 'Error'); return; }
+      if (j.promoted) {
+        alert(`Saved. ${j.promoted.name} promoted from waitlist (FIFO).`);
+      }
+      renderTable(j.applications || []);
+    }
+
+    async function loadMeta() {
+      const r = await fetch(API + '/api/meta');
+      const m = await r.json();
+      metaCache = m;
+      document.getElementById('deadline-banner').innerHTML =
+        `Application deadline: <strong>${m.deadline}</strong> · ${m.academic_year} · <strong>${m.semester}</strong>`;
+      document.getElementById('semester-select').innerHTML =
+        `<option>${m.semester}</option><option>Spring 2027</option>`;
+      document.getElementById('budget-line').textContent =
+        `Budget cap: $${m.budget_usd.toLocaleString()} USD · Eligibility: income < $${m.max_income_usd.toLocaleString()} USD/year (local currency converted) · marks ≥ 50%`;
+      if (m.server_timezone) {
+        document.getElementById('tz-label').textContent = `server local time (${m.server_timezone})`;
+      }
+      const countries = Object.keys(m.country_currencies || {}).sort();
+      document.getElementById('country-select').innerHTML = countries.map(c =>
+        `<option value="${c}">${c}</option>`).join('');
+      document.getElementById('currency-select').innerHTML = (m.currencies || ['USD']).map(c =>
+        `<option value="${c}">${c}</option>`).join('');
+      syncCurrencyFromCountry();
+    }
+
+    function syncCurrencyFromCountry() {
+      if (!metaCache) return;
+      const country = document.getElementById('country-select').value;
+      const code = (metaCache.country_currencies || {})[country] || 'USD';
+      document.getElementById('currency-select').value = code;
+    }
+
+    document.getElementById('country-select').addEventListener('change', syncCurrencyFromCountry);
+
+    document.getElementById('apply-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = Object.fromEntries(fd.entries());
+      body.marks_pct = parseFloat(body.marks_pct);
+      body.family_income_local = parseFloat(body.family_income_local);
+      const r = await fetch(API + '/api/applications', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      document.getElementById('msg').textContent = r.ok
+        ? `✓ Application submitted for ${body.name} on ${j.application?.applied_date} at ${j.application?.applied_time} (server time)`
+        : (j.detail || 'Error');
+    });
+
+    function renderTable(apps) {
+      const sorted = [...apps].sort((a, b) => (a.applied_at || '').localeCompare(b.applied_at || ''));
+      const tb = document.getElementById('tbody');
+      tb.innerHTML = sorted.map(a => {
+        const cls = statusClass(a.status);
+        const dot = dotClass(a.status);
+        const appliedDate = a.applied_date || '—';
+        const appliedTime = a.applied_time || '—';
+        const reasonDisplay = a.rejection_reason || (a.interview_outcome === 'attended_rejected' ? '—' : '');
+        return `<tr>
+          <td><span class="dot ${dot}"></span></td>
+          <td>${a.name}</td><td>${a.country}</td>
+          <td>${appliedDate}</td><td>${appliedTime}</td>
+          <td>${a.marks_pct}%</td>
+          <td>${Number(a.family_income_local).toLocaleString()} ${a.currency_code || ''}</td>
+          <td>$${Number(a.family_income_usd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+          <td>${a.tier || '—'}</td>
+          <td>${a.award_usd ? '$'+Number(a.award_usd).toLocaleString() : '—'}</td>
+          <td class="${cls}">${statusLabel(a.status)}</td>
+          <td>${buildInterviewCell(a)}</td>
+          <td>${reasonDisplay || '—'}</td></tr>`;
+      }).join('');
+      bindInterviewHandlers();
+    }
+
+    async function loadApps() {
+      const r = await fetch(API + '/api/applications');
+      const j = await r.json();
+      renderTable(j.applications || []);
+    }
+
+    document.getElementById('run-allocate').addEventListener('click', async () => {
+      const r = await fetch(API + '/api/allocate', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok) { alert(j.detail || 'Error'); return; }
+      const s = j.summary;
+      document.getElementById('metrics').style.display = 'grid';
+      document.getElementById('prog-wrap').style.display = 'block';
+      document.getElementById('m-selected').textContent = s.selected_count;
+      document.getElementById('m-wait').textContent = s.waitlist_count;
+      document.getElementById('m-spent').textContent = '$' + s.spent_usd.toLocaleString();
+      document.getElementById('m-left').textContent = '$' + s.remaining_usd.toLocaleString();
+      document.getElementById('prog-bar').style.width = (100 * s.spent_usd / s.budget_usd) + '%';
+      document.getElementById('explain').textContent = j.explanation || (
+        'Allocation used deterministic rules + FIFO timestamps — no human bias in filter phase.');
+      renderTable(j.applications);
+    });
+
+    document.getElementById('run-seed').addEventListener('click', async () => {
+      const r = await fetch(API + '/api/seed', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok) { alert(j.detail || 'Error'); return; }
+      alert(`Loaded ${j.count} demo students. Click "Run fair allocation".`);
+      loadApps();
+    });
+
+    loadMeta().then(() => loadApps());
+  </script>
+</body>
+</html>

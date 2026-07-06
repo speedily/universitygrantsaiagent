@@ -1,0 +1,3 @@
+Application ID,Name,Email,Country,Semester,Academic Year,Marks Pct,Grade,Family Income Local,Currency,Family Income USD,Applied At,Status,Tier,Award USD,Interview Outcome,Rejection Reason,Notes
+demo-001,Ananya Sharma,ananya@uni.in,India,Fall 2026,2026–2027,88,A,850000,INR,10200,2026-07-01T08:00:00+00:00,selected,A,150000,,,Selected — fair rules + FIFO timestamp
+demo-002,Rahul Mehta,rahul@uni.in,India,Fall 2026,2026–2027,91,A,720000,INR,8640,2026-07-01T09:00:00+00:00,waitlist,A,150000,,,Waitlist — budget cap reached; FIFO order preserved
